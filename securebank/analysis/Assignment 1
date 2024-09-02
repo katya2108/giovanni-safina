@@ -1,0 +1,114 @@
+import pandas as pd
+import json
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Set the aesthetic style of the plots
+sns.set(style="whitegrid")
+
+# File paths
+customer_file_path = '/Users/katevodeiko/Downloads/AS 1/customer_release.csv'
+transactions_file_path = '/Users/katevodeiko/Downloads/AS 1/transactions_release.parquet'
+fraud_file_path = '/Users/katevodeiko/Downloads/AS 1/fraud_release.json'
+
+# Task 1: Function to merge data
+def __merge(customer_filename: str, transaction_filename: str, fraud_filename: str):
+    # Load the customer and transaction data
+    customer_data = pd.read_csv(customer_filename)
+    transactions_data = pd.read_parquet(transaction_filename)
+    
+    # Load the fraud data from the JSON file
+    with open(fraud_filename, 'r') as file:
+        fraud_dict = json.load(file)
+    
+    # Convert the fraud data dictionary to a DataFrame
+    fraud_data = pd.DataFrame(list(fraud_dict.items()), columns=['trans_num', 'is_fraud'])
+
+    # Merge the fraud data with the transaction data on 'trans_num'
+    merged_data = transactions_data.merge(fraud_data, on='trans_num', how='left')
+
+    # Merge the resulting data with the customer data on 'cc_num'
+    final_data = merged_data.merge(customer_data, on='cc_num', how='left')
+
+    # Sort by 'trans_date_trans_time'
+    final_data.sort_values(by='trans_date_trans_time', inplace=True)
+
+    # Set the index to 'trans_num'
+    final_data.set_index('trans_num', inplace=True)
+
+    return final_data
+
+# Example usage of __merge function
+final_data = __merge(customer_file_path, transactions_file_path, fraud_file_path)
+
+# Task 2: Data Analysis
+
+# 1. Exploring the Data
+print("Data Information:")
+print(final_data.info())
+print("\nData Description:")
+print(final_data.describe())
+print("\nMissing Values in Data:")
+print(final_data.isnull().sum())  # Check for missing values
+
+# 2. Visualizing the Data
+
+# Example 1: Distribution of Fraud vs Non-Fraud Transactions
+plt.figure(figsize=(10, 6))
+sns.countplot(data=final_data, x='is_fraud', palette='viridis')
+plt.title('Distribution of Fraud vs Non-Fraud Transactions', fontsize=16)
+plt.xlabel('Is Fraud', fontsize=14)
+plt.ylabel('Count', fontsize=14)
+plt.xticks(ticks=[0, 1], labels=['Non-Fraudulent', 'Fraudulent'])
+plt.show()
+
+# Example 2: Transaction Amount by Fraud Status
+plt.figure(figsize=(10, 6))
+sns.boxplot(data=final_data, x='is_fraud', y='amt', palette='coolwarm')
+plt.title('Transaction Amounts by Fraud Status', fontsize=16)
+plt.xlabel('Is Fraud', fontsize=14)
+plt.ylabel('Transaction Amount', fontsize=14)
+plt.xticks(ticks=[0, 1], labels=['Non-Fraudulent', 'Fraudulent'])
+plt.yscale('log')  # Use log scale for better visualization of skewed data
+plt.show()
+
+# Example 3: Transactions Over Time
+final_data['trans_date_trans_time'] = pd.to_datetime(final_data['trans_date_trans_time'])
+final_data.set_index('trans_date_trans_time', inplace=True)
+
+plt.figure(figsize=(14, 7))
+final_data.groupby(final_data.index.date)['amt'].sum().plot(color='dodgerblue', linewidth=2)
+plt.title('Total Transaction Amount Over Time', fontsize=16)
+plt.xlabel('Date', fontsize=14)
+plt.ylabel('Total Transaction Amount', fontsize=14)
+plt.grid(True)
+plt.show()
+
+# 3. Corroborating or Disproving Analysts' Insights
+
+# Insight 1: High-value transactions are more likely to be fraudulent
+# Analyze the distribution of transaction amounts for fraud vs non-fraud
+high_value_fraud = final_data[final_data['amt'] > 1000]['is_fraud'].value_counts(normalize=True)
+print("High-value transactions - Fraud distribution:", high_value_fraud)
+
+# Insight 2: Fraudulent transactions occur more frequently during certain times of the day
+# Analyze the time of day for fraud vs non-fraud transactions
+final_data['hour'] = final_data.index.hour
+plt.figure(figsize=(14, 7))
+fraud_by_hour = final_data.groupby('hour')['is_fraud'].mean()
+fraud_by_hour.plot(kind='bar', color='salmon', edgecolor='black')
+plt.title('Average Fraud Rate by Hour of Day', fontsize=16)
+plt.xlabel('Hour', fontsize=14)
+plt.ylabel('Average Fraud Rate', fontsize=14)
+plt.grid(True)
+plt.show()
+
+# 4. Two Additional Insights
+
+# Insight 1: Certain job roles may have a higher likelihood of fraud
+job_fraud = final_data.groupby('job')['is_fraud'].mean().sort_values(ascending=False).head(10)
+print("\nTop 10 job roles by fraud likelihood:\n", job_fraud)
+
+# Insight 2: Geographic analysis - are certain states more prone to fraud?
+state_fraud = final_data.groupby('state')['is_fraud'].mean().sort_values(ascending=False).head(10)
+print("\nTop 10 states by fraud likelihood:\n", state_fraud)
